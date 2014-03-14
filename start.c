@@ -1,17 +1,17 @@
 #include<stdlib.h>
 
-#include "hardware.h"
-#include "yalnix.h"
+#include <comp421/hardware.h>
+#include <comp421/yalnix.h>
 
 void *brk;
 int head;
-void KernelStart(ExceptionStackFrame *frame, unsigned int pmem_size, void *org_brk, char **cmd_args)
+void KernelStart(ExceptionStackFrame *frame, unsigned int pmem_size, void *orig_brk, char **cmd_args)
 {
 	int i,addr;
 	
 	void (*vector_table[TRAP_VECTOR_SIZE])(ExceptionStackFrame *);
 	struct pte *pt1,*pt2;
-	brk=org_brk;
+	brk=orig_brk;
 	for ( i=0;i<TRAP_VECTOR_SIZE;i++)
 		vector_table[i]=NULL;
 	WriteRegister(REG_VECTOR_BASE,(RCS421RegVal)vector_table);
@@ -26,20 +26,21 @@ void KernelStart(ExceptionStackFrame *frame, unsigned int pmem_size, void *org_b
 	pt2=(struct pte *)malloc(PAGE_TABLE_LEN * sizeof(struct pte));
 	WriteRegister(REG_PTR0,(RCS421RegVal)pt1);
 	WriteRegister(REG_PTR1,(RCS421RegVal)pt2);
-	for(i=1;i<PMEM_BASE+pmem_size;i=i+PAGESIZE)
+
+	for(i=1; i < (PMEM_BASE+pmem_size); i=i+PAGESIZE)  // why i = 1 not i = 0?
 	{
-		if(((i*PAGESIZE) > KERNEL_STACK_BASE && (i*PAGESIZE <brk))||(((i+1)*PAGESIZE-1 )> KERNEL_STACK_BASE && ((i+1)*PAGESIZE -1 <brk)))
+		if(((i*PAGESIZE) > KERNEL_STACK_BASE && (i*PAGESIZE < brk))||(((i+1)*PAGESIZE-1 )> KERNEL_STACK_BASE && ((i+1)*PAGESIZE -1 < brk)))
 			continue;
 		*(int *)addr=(i*PAGESIZE);
 		addr=(i*PAGESIZE);
 			
 	}
 
+}
 
-
-
-
-
+void WriteRegister(int which, RCS421RegVal value)
+{
+	*(int*)which = value;
 }
 
 int SetKernelBrk(void *addr)
