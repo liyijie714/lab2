@@ -1,0 +1,43 @@
+#include<stdlib.h>
+
+#include "hardware.h"
+#include "yalnix.h"
+
+void *mod_brk;
+int head;
+static void (*vector_table[TRAP_VECTOR_SIZE])(ExceptionStackFrame *);
+void KernelStart(ExceptionStackFrame *frame, unsigned int pmem_size, void *org_brk, char **cmd_args)
+{
+	int i,addr;
+	struct pte *pt1,*pt2;
+	mod_brk=org_brk;
+	WriteRegister(REG_VECTOR_BASE,(RCS421RegVal)vector_table);
+	addr=0;
+	pt1=(struct pte *)malloc(PAGE_TABLE_LEN * sizeof(struct pte));
+	pt2=(struct pte *)malloc(PAGE_TABLE_LEN * sizeof(struct pte));
+	WriteRegister(REG_PTR0,(RCS421RegVal)pt1);
+	WriteRegister(REG_PTR1,(RCS421RegVal)pt2);
+	for(i=1;i<PMEM_BASE+pmem_size;i=i+PAGESIZE)
+	{
+		if((i*PAGESIZE < KERNEL_STACK_BASE && ((i+1)*PAGESIZE)-1 < KERNEL_STACK_BASE)||(i*PAGESIZE > (int)mod_brk && ((i+1)*PAGESIZE)-1 < PMEM_BASE+pmem_size))
+		{	*(int *)addr=(i*PAGESIZE);
+			addr=(i*PAGESIZE);
+		}
+			
+	}
+
+
+
+
+
+
+}
+
+int SetKernelBrk(void *addr)
+{
+	if((int)addr>=VMEM_1_LIMIT)
+		return -1;
+
+	mod_brk=addr;
+	return 0;
+}
