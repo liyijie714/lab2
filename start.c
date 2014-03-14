@@ -38,11 +38,6 @@ void KernelStart(ExceptionStackFrame *frame, unsigned int pmem_size, void *orig_
 
 }
 
-void WriteRegister(int which, RCS421RegVal value)
-{
-	*(int*)which = value;
-}
-
 int SetKernelBrk(void *addr)
 {
 	brk=addr;
