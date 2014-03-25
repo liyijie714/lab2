@@ -1,0 +1,44 @@
+int kernel_delay(int clock_ticks){
+    TracePrintf(0, "enter delay");
+    if(clock_ticks == 0)
+        return 0;
+    if(clock_ticks < 0)
+        return ERROR;
+    else
+    {
+        
+        TracePrintf(0, "I'm in delay.");
+        /* Add this process to blocked queue*/
+        addQ(&blockedQ, this_pcb);
+
+        /*set the current process's clock ticks*/
+        this_pcb->clock = clock_ticks;  
+
+        struct PCB * next_process = getQ(&readyQ);
+        if(next_process == NULL)
+        {
+            if(ContextSwitch(MySwitchFunc, &new_pcb->ctxp, (void *)this_pcb, (void *)new_pcb)==-1)
+                TracePrintf(0,"\n Error while context switching");
+
+            TracePrintf(0, "prepare for switching to init");
+            /* If no process is ready, it would switch to init */
+            TracePrintf(0,"value of pt1=%d and pt2 =%d\n",this_pcb,init_pcb);
+            if(ContextSwitch(MySwitchFunc, &this_pcb->ctxp, (void *)this_pcb, (void *)new_pcb)==-1)
+                 TracePrintf(0,"\n Error while context switching");
+
+            //TracePrintf(0,"value of pt1=%d and pt2 =%d\n",this_pcb,init_pcb);
+            return 0;
+        }
+        else
+        {
+            if((ContextSwitch(MySwitchFunc, &next_process->ctxp, (void *)this_pcb, (void *)next_process))==-1)
+                TracePrintf(0,"\n Error while context switching");
+
+            TracePrintf(0, "prepare for switching to next process");
+             /* context switch to next available process*/
+            if((ContextSwitch(MySwitchFunc, &next_process->ctxp, (void *)this_pcb, (void *)next_process))==-1)
+                 TracePrintf(0,"\n Error while context switching");
+            return 0;
+        }
+    }
+}
