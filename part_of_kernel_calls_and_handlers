@@ -1,0 +1,283 @@
+#define WAITING_READ 0
+#define WAITING_WRITE 1
+#define NO_STATUS -1
+
+struct PCB{
+    int pid;
+    struct PCB *next,*prev;
+    long pt0_virt;
+    long pt0_phy;
+    SavedContext ctxp;
+    int clockcount; // count how many clocks the process has run
+    int tid; // terminal id, if not waiting read, should be -1; 0 1 2 3
+    int ticks;
+    int io_status;
+};
+
+char * tbuffer[NUM_TERMINALS];
+int tlines[NUM_TERMINALS]; //initialize it to 1
+
+void trap_kernel(ExceptionStackFrame *e){
+    int res;
+    struct PCB *npcb,*opcb;
+    switch(e->code)
+    {
+        case YALNIX_FORK:
+        opcb=active_pcb;
+        npcb=(struct PCB *) kfork(e);
+        if(opcb->pid < npcb->pid)
+        {
+            TracePrintf(0,"TrapKernel: In if part of yalnix_fork\n" );
+            e->regs[0]=0;
+            addQ(&readyQ,npcb);
+            WriteRegister(REG_TLB_FLUSH,TLB_FLUSH_0);
+            WriteRegister(REG_PTR0,(RCS421RegVal)opcb->pt0_phy);
+            active_pcb=opcb;
+        }
+        else
+        {
+            TracePrintf(0,"TrapKernel: In else part of yalnix_fork\n" );
+
+
+
+        }
+            break;
+        case YALNIX_EXEC:
+            break;
+        case YALNIX_EXIT:
+            break;
+        case YALNIX_WAIT:
+            break;
+        case YALNIX_GETPID:
+            kgetpid(e);
+            break;
+        case YALNIX_BRK:
+            break;
+        case YALNIX_DELAY:
+            kdelay(e->regs[1]);
+            break;
+        case YALNIX_TTY_READ:
+            e->regs[0] = kttyread(e->regs[1], e->regs[2], e->regs[3]);
+            break;
+        case YALNIX_TTY_WRITE:
+        	e->regs[0] = kttyWrite(e->regs[1], e->regs[2], e->regs[3]);
+            break;
+    }
+}
+
+
+void trap_clock(ExceptionStackFrame *e){
+	if(current_process->clock > 2)
+	{
+		/* store the head of blocked queue */
+		struct PCB * blocked_head = blockedQ;
+
+		/* go through blockedQ, move available processes to readyQ, and remove these process from blockedQ */
+		if(blockedQ->next != NULL)
+		{
+			while(blockedQ->next != NULL)
+			{
+				blockedQ->next->ticks--;
+				/* if the tick of this process is 0, add this process t*/
+				if(blockedQ->next->ticks == 0)
+				{
+					addQ(readyQ, blockedQ->next);
+					remove_from_Q(blockedQ, blockedQ->next);
+				}
+			}
+		}
+
+	    //TODO
+	    //context switch to next available process.
+	}
+}
+
+void trap_illegal(ExceptionStackFrame *e){
+	//call kexit to stop the current one and switch to next available process
+	printf("The current process '%d' is executing an illegal instruction. The kernel forcequites it.", current_process->pid);
+	kexit(ERROR);
+}
+
+void trap_math(ExceptionStackFrame *e){
+	//call kexit to stop the current one and switch to next available process
+	printf("The current process '%d' results in some arithmetic error. The kernel forcequites it.", current_process->pid);
+	kexit(ERROR);
+}
+
+void trap_tty_receive(ExceptionStackFrame *e){
+	if(tlines[e->code] == 1)
+		tbuffer[e->code] = (char*)malloc(TERMINAL_MAX_LINE * sizeof(char)*tlines[e->code]);
+	else
+		tbuffer[e->code] = (char*)realloc(tbuffer[e->code], TERMINAL_MAX_LINE * sizeof(char) * tlines[e->code]);
+
+	tlines[e->code]++;
+
+	int len = TtyReceive(e->code, tbuffer[e->code]+(TERMINAL_MAX_LINE*tlines[e->code]-1)), TERMINAL_MAX_LINE*sizeof(char));
+
+    /* unblock the processes whose */
+	if(blockedQ->front == NULL) return;
+	/* store the readyQ head */
+	struct PCB* tempblockedQ = blockedQ;
+	while(tempblockedQ->front != NULL)
+	{
+		if(tempblockedQ->front->tid == e->code && tempblockedQ->front->io_status == WAITING_READ)
+		{
+			tempblockedQ->front->io_status = NO_STATUS;
+			remove_from_Q(blockedQ,tempreadyQ->frond);
+			addQ(readyQ, tempreadyQ->frond);
+			break; // everytime unblock one process
+		}
+		tempblockedQ->front = tempblockedQ->front->next;
+	}
+
+}
+
+void trap_tty_transmit(ExceptionStackFrame *e){
+	if(blockedQ->front == NULL) return;
+	else
+	{
+		struct *Queue tempblockedQ = blockedQ;
+		while(tempblockedQ->front != NULL)
+		{	
+			/* ublock some process */
+			if(tempblockedQ->front->tid == e->code && tempblockedQ->front->io_status == WAITING_WRITE)
+			{
+				tempblockedQ->front->io_status = NO_STATUS;
+				remove_from_Q(blockedQ,tempreadyQ->frond);
+				addQ(readyQ, tempreadyQ->frond);
+				break; // everytime unblock one process
+			}
+			tempblockedQ->front = tempblockedQ->front->next;
+		}
+	}
+}
+
+
+int TtyRead(int tty_id, void * buf, int len)
+{
+	if(tty_id < 0 || tty_id > NUM_TERMINALS)
+	{
+		printf("Terminal %d does not exist.", tty_id);
+		return ERROR;
+	}
+		
+	if(len < 0 || len > TERMINAL_MAX_LINE)
+	{
+		printf("The length of input line is illegal. Please check it.");
+		return ERROR;
+	}
+
+	/* if the corresponding buffer is not null, read chars to user's buf immediately and won't block this process*/
+	int countchar;
+	if(tbuffer[tty_id] != NULL)
+	{
+		countchar = 0;
+		/* copy first len chars or all available chars in this line*/
+		while(countchar < len && tbuffer[tty_id]+TERMINAL_MAX_LINE*(tlines(tty_id)-1) != NULL) 
+		{
+			strncpy(tbuffer[tty_id]+TERMINAL_MAX_LINE*(tlines(tty_id)-1), buf+countchar,1);
+			countchar++;
+			tbuffer[tty_id]+TERMINAL_MAX_LINE*(tlines(tty_id)-1) += 1; // keep the head pointing the current char
+		}
+		return countchar;
+	}
+	else
+	{
+		/* put this process to blockedQ */
+ 		current_process->io_status = WAITING_READ;
+ 		addQ(blockedQ, current_process);
+
+ 		/* switch to next available process*/
+ 		if(readyQ->front == NULL)
+ 			//TODO: contextswitch to idle
+ 		else
+ 		{
+ 			//TODO: context switch to next available process by using getQ()
+ 		}
+
+ 		/* when coming back, tbuffer is not null, it is available to read*/
+ 		countchar = 0;
+		/* copy first len chars or all available chars in this line*/
+		while(countchar < len && tbuffer[tty_id]+TERMINAL_MAX_LINE*(tlines(tty_id)-1) != NULL) 
+		{
+			strncpy(tbuffer[tty_id]+TERMINAL_MAX_LINE*(tlines(tty_id)-1), buf+countchar,1);
+			countchar++;
+			tbuffer[tty_id]+TERMINAL_MAX_LINE*(tlines(tty_id)-1) += 1; // keep the head pointing the current char
+		}
+		return countchar;
+	}
+
+}
+
+int TtyWrite(int tty_id, void *buf, int len)
+{
+	if(tty_id < 0 || tty_id > NUM_TERMINALS)
+	{
+		printf("Terminal %d does not exist.", tty_id);
+		return ERROR;
+	}
+		
+	if(len < 0 || len > TERMINAL_MAX_LINE)
+	{
+		printf("The length of input line is illegal. Please check it.");
+		return ERROR;
+	}
+
+	char *wbuf = (char *)malloc(len * sizeof(char));
+	TtyTransmit(tty_id, wbuf, len);
+
+	/*block this process and switch to next available process*/
+	current_process->io_status = WAITING_WRITE;
+	addQ(blockedQ, current_process);
+
+	//TODO
+	if(readyQ == NULL)
+	{
+		//TODO: context switch to idle process
+	}
+	else
+	{
+		//TODO: next available process
+	}
+}
+
+
+void remove_from_Q(struct *Q Q, struct PCB *pcb)
+{
+	if(Q->front == NULL)
+		return:
+	else
+	{
+		/* store the front*/
+		if (Q->front == pcb)
+		{
+			Q->front = Q->front->next;
+			return;
+		}
+		else
+		{
+			while(Q->front->next!= NULL)
+			{
+
+				if(Q->front->next == pcb)
+				{
+					Q->front = Q->front->next->next;
+				}
+				Q->front = Q->front->next;
+			}
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
