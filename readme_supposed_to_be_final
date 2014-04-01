@@ -1,0 +1,129 @@
+This directory contains the following files:
+	-yalnix.c
+	 contains 
+		-Kernelstart where page tables are set up ,virtual memory is enabled and init and idle processes are loaded into the memory.
+		-procedures for all the defined yalnix calls and handlers for all traps, interrupts and exceptions.
+	-test programs
+		contains all the test programs which are provided by the professor and are supported by our kernel.
+	-makefile
+		contains all the code to compile and link yalnix.c and other test programs
+
+Project Members:
+	Rishika Gupta 	-rg31
+	Yijie Li 		-yl68
+
+Our project supports all the test cases included in our summitted file.
+
+Following is the structure of Process Control Block used in kernel:
+ 	
+struct PCB{
+    int pid;
+	--stores the unique process id for each process
+    
+	struct PCB *next,*prev;
+	-- next pointer points to the next PCB if this process is currently in a queue.
+	-- prev pointer points to the previous PCB if this process is currently in a queue.
+    
+	long pt0_virt;
+	-- stores the virtual address of the region 0 page table for this process.
+    
+	long pt0_phy;
+	-- stores the physical address of the region 0 page table for this process.
+    
+	long brk;
+	-- stores the address of first unused memory location in user heap.
+    
+	SavedContext ctxp;
+	-- stores the saved context of this process from its last execution.
+    
+	int clockcount;
+	-- stores the number of clock counts to keep track of which process to execute in trap_clock. 
+    
+	int exit_status;
+	-- stores the exit status of this process , for its parent to collect later.
+    
+	int tid;
+	-- stores the id of the terminal which process is using.
+    
+	int ticks;
+	-- stores the number of clock counts for which process has to be delayed.
+    
+	int io_status;
+	-- stores the status of a process if its waiting for a read or a write.
+    
+	struct PCB *parent;
+	-- parent pointer points to the parent of this process, if this process is created by some other process using
+		fork().
+    
+	struct PCB *child;
+	-- stores pointer to the first child process of this process created using fork().
+    
+	struct PCB *childQ;
+	-- stores a pointer to the sibling processes, i.e process created by the same parent after process was created.
+}
+
+Following is the queue structure we are using to maintain different queues:
+struct Queue {
+    struct PCB *front;
+	-- points to the front element of the queue. This is the element which is removed when an element from queue is
+		required.
+    struct PCB *rear;
+	-- points to the last element of the queue. This is the element after which any new incoming element has to be
+		added.
+};
+
+Following are the queues kernel is using:
+
+	readyQ
+	-- maintains a queue for all the runnable process. Every ready process is added in this queue when the processor
+	   is busy executing some other process. And once processor is free it can take ready processes from readyQ until
+	   its empty.
+
+	blockedQ
+	-- maintains a queue for all the processes which are blocked , may be due to delay or input output operations.
+
+	exitedQ
+	-- maintains a queue for all the processes which have exited but their exit_status are still not collected by 
+	   their parent processes.
+
+	wait_blockedQ;
+	--maintains a queue which contains all teh processes which are waiting to collect their child's exit status.
+
+Following are the procedures used to maintain the queues in kernel:
+
+	struct PCB * getQ(struct Queue *Q);
+	--returns an element from the queue Q, which is given as a parameter.
+	  returns NULL if queue Q is empty.
+
+	void addQ(struct Queue *Q,struct PCB *new_pcb);
+	-- adds the new_pcb in the queue Q
+
+	int remove_from_Q(struct Queue *Q, struct PCB *pcb);
+	-- removes the pcb from queue Q and returns 0 and
+	   returns -1 if pcb does not exist in the queue Q.
+
+Following are few data structures used in the kernel:
+
+	pid_counter
+	-- an integer variable used to allocate a unique process id to all the processes.
+
+	idle_pcb
+	--stores the pointer to pcb for an idle process which is executed in kernel when there is no other ready process.
+
+	active_pcb
+	-- stores the pointer to pcb for the currently executing process.
+
+	mod_brk
+	-- stores the address of first unused memory in kernel heap.
+
+	pfn_head
+	-- points to the head of the linked list of free physical pages.
+
+	int rest_char_in_line = TERMINAL_MAX_LINE;
+	-- Keep how many characters left in the line which is reading by some process.
+
+	char * tbuffer[NUM_TERMINALS]
+	-- Terminal buffer indentified by terminal id.
+
+	int tlines[NUM_TERMINALS] //initialize it to 1
+	-- Keep how many lines in each terminal buffer.
